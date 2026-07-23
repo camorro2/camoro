@@ -1,0 +1,28 @@
+# Captured data - never commit secrets
+capture/*
+!capture/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Temp runtime
+/tmp/hostapd_wifitool.conf
+/tmp/dnsmasq_wifitool.conf
+*.cap
+*.hccapx
+*.hc22000
+*.csv
+*.netxml
