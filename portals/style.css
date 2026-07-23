@@ -1,0 +1,140 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f172a;
+  overflow-x: hidden;
+}
+
+.bg {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(1200px 600px at 10% 10%, #38bdf855, transparent 60%),
+    radial-gradient(900px 500px at 90% 80%, #818cf855, transparent 55%),
+    linear-gradient(145deg, #0f172a, #1e293b 45%, #312e81);
+  z-index: -1;
+}
+
+.card {
+  width: min(92vw, 400px);
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 22px;
+  padding: 32px 26px 22px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+.logo {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #2563eb;
+  background: linear-gradient(145deg, #dbeafe, #eff6ff);
+}
+
+h1 {
+  font-size: 1.45rem;
+  margin-bottom: 6px;
+}
+
+.sub {
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.hint {
+  color: #64748b;
+  font-size: 0.92rem;
+  margin-bottom: 20px;
+}
+
+form {
+  text-align: right;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: #475569;
+  margin-bottom: 6px;
+}
+
+input[type="password"],
+input[type="text"] {
+  width: 100%;
+  padding: 14px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 1rem;
+  outline: none;
+  margin-bottom: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  text-align: left;
+  direction: ltr;
+}
+
+input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px #3b82f622;
+}
+
+button {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  transition: transform 0.12s, opacity 0.12s;
+}
+
+button:hover {
+  opacity: 0.95;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.msg {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
+.msg.err {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.hidden {
+  display: none;
+}
+
+.foot {
+  margin-top: 18px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
