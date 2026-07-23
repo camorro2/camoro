@@ -1,0 +1,4 @@
+# MemoryForge dependencies
+# (Mostly stdlib, no external deps needed)
+# Optional for better formatting:
+colorama>=0.4.6
