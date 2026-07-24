@@ -1,23 +1,39 @@
-# 🔮 Camoro - Instagram Security Assessment Framework
+# 🔮 Camoro v5.0
 
-**Camoro** is an advanced Instagram security testing tool with AI-powered password generation. Designed for authorized security professionals to assess account strength.
+**AI-Powered Instagram Security Assessment Framework**
 
-## ⚡ Features
+إطار اختبار أمني متقدم لتقييم قوة حسابات Instagram، مدعوم بتوليد كلمات مرور ذكي يعتمد على تحليل المعلومات والسلوك البشري.
 
-- 🔍 **Intelligence Gathering** - Extract public profile data
-- 🧠 **AI Password Generator** - ~18,000 smart passwords from gathered intel
-- ⚡ **Password Testing Engine** - Tests passwords against Instagram auth
-- 🔄 **Full Attack Mode** - Automated info gathering → generation → testing
-- 📊 **Real-time Progress** - Live stats, speed, ETA display
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Termux%20%7C%20Linux-green.svg)](#-التثبيت)
+[![License](https://img.shields.io/badge/License-Educational-orange.svg)](#-إخلاء-المسؤولية)
+[![Version](https://img.shields.io/badge/Version-5.0.0-purple.svg)](#)
 
-## 📦 Installation (Termux)
+---
 
-```bash
-pkg update && pkg upgrade -y
-pkg install git python python-pip -y
-git clone https://github.com/YOUR_USERNAME/camoro.git
-cd camoro
-pip install -r requirements.txt
-chmod +x camoro.sh install.sh
-./install.sh    # Auto-install dependencies
-./camoro.sh     # Launch the tool
+## 📋 المحتويات
+
+- [نظرة عامة](#-نظرة-عامة)
+- [الميزات](#-الميزات)
+- [المتطلبات](#-المتطلبات)
+- [التثبيت](#-التثبيت)
+- [التشغيل](#-التشغيل)
+- [دليل الاستخدام](#-دليل-الاستخدام)
+- [هيكل المشروع](#-هيكل-المشروع)
+- [أمثلة الأوامر](#-أمثلة-الأوامر)
+- [النتائج](#-النتائج)
+- [استكشاف الأخطاء](#-استكشاف-الأخطاء)
+- [إخلاء المسؤولية](#-إخلاء-المسؤولية)
+
+---
+
+## 🧠 نظرة عامة
+
+**Camoro** أداة CLI احترافية تعمل على **Termux** و **Linux**، مصممة لمحترفي الأمن السيبراني واختبارات الاختراق المصرّح بها.
+
+تقوم الأداة بثلاث مراحل رئيسية:
+
+```text
+1) جمع المعلومات (Recon)
+2) توليد كلمات مرور ذكية (~20,000)
+3) اختبار قوة كلمة المرور (مع تدوير IP)
