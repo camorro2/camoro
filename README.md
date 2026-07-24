@@ -33,7 +33,7 @@
 ```bash
 pkg update && pkg upgrade -y
 pkg install python git -y
-git clone https://github.com/yourusername/CamarO-Pro
+git clone https://github.com/CamarO-Pro/CamarO-Pro.git
 cd CamarO-Pro
 pip install -r requirements.txt
 python src/main.py
