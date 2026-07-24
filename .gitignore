@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+venv/
+env/
+*.env.local
+
+# Results
+results/*.txt
+results/*.json
+results/*.csv
+
+# Config
+config.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs
+*.log
