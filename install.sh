@@ -1,7 +1,6 @@
 #!/bin/bash
-
-# Camoro v4 - Termux Installer
-# Instagram Security Assessment Framework
+# Camoro v5.0 - Installer
+# AI-Powered Security Assessment Framework
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -19,59 +18,42 @@ echo "║    ██╔════╝██╔══██╗████╗ █
 echo "║    ██║     ███████║██╔████╔██║██║   ██║██████╔╝██║   ██║"
 echo "║    ██║     ██╔══██║██║╚██╔╝██║██║   ██║██╔══██╗██║   ██║"
 echo "║    ╚██████╗██║  ██║██║ ╚═╝ ██║╚██████╔╝██║  ██║╚██████╔╝"
-echo "║     ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ "
+echo "║     ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝"
 echo "║                                                      ║"
-echo "║   🔥 v4.0 - AI-Powered | IP Rotation | Destroyer     ║"
+echo "║         🔮 v5.0 - AI-Powered Installer               ║"
 echo "║                                                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "${YELLOW}[*] جاري تثبيت Camoro v4...${NC}"
+echo -e "${YELLOW}[*] جاري تثبيت Camoro v5.0...${NC}"
 sleep 1
 
-# تحديث Termux
-echo -e "${CYAN}[1/5] تحديث الحزم...${NC}"
-pkg update -y && pkg upgrade -y
+# 1. تحديث الحزم
+echo -e "${CYAN}[1/4] تحديث الحزم...${NC}"
+pkg update -y && pkg upgrade -y 2>/dev/null || apt update -y && apt upgrade -y 2>/dev/null
 
-# تثبيت الأدوات الأساسية
-echo -e "${CYAN}[2/5] تثبيت الأدوات...${NC}"
-pkg install -y python python-pip git curl wget openssl tor privoxy net-tools
+# 2. تثبيت الأدوات
+echo -e "${CYAN}[2/4] تثبيت الأدوات الأساسية...${NC}"
+if command -v pkg &> /dev/null; then
+    pkg install -y python python-pip git curl tor privoxy openssl 2>/dev/null
+else
+    sudo apt install -y python3 python3-pip git curl tor privoxy 2>/dev/null
+fi
 
-# تثبيت بايثون المكتبات
-echo -e "${CYAN}[3/5] تثبيت مكتبات بايثون...${NC}"
-pip install --upgrade pip
-pip install httpx[http2] colorama requests[socks]
+# 3. تثبيت مكتبات Python
+echo -e "${CYAN}[3/4] تثبيت مكتبات Python...${NC}"
+pip install --upgrade pip 2>/dev/null
+pip install httpx[http2] colorama requests urllib3 certifi 2>/dev/null
 
-# إعداد Tor
-echo -e "${CYAN}[4/5] إعداد Tor...${NC}"
-cat > /data/data/com.termux/files/usr/etc/tor/torrc << 'EOF'
-## Tor Configuration for Camoro
-SOCKSPort 9050
-ControlPort 9051
-CookieAuthentication 1
-ExitNodes {us},{uk},{ca},{de},{fr},{nl}
-StrictNodes 0
-EOF
-
-# إعداد Privoxy
-echo -e "${CYAN}[5/5] إعداد Privoxy...${NC}"
-cat > /data/data/com.termux/files/usr/etc/privoxy/config << 'EOF'
-listen-address 127.0.0.1:8118
-forward-socks5t / 127.0.0.1:9050 .
-EOF
-
-# صلاحيات
-chmod +x camoro.sh
+# 4. صلاحيات
+echo -e "${CYAN}[4/4] ضبط الصلاحيات...${NC}"
+chmod +x camoro.sh camoro.py 2>/dev/null
 
 echo -e "\n${GREEN}╔══════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║     ✅ CAMORO v4 INSTALLED!              ║${NC}"
+echo -e "${GREEN}║     ✅ CAMORO v5.0 INSTALLED!           ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
-echo -e ""
-echo -e "  ${YELLOW}📌 قبل التشغيل لأول مرة:${NC}"
-echo -e "  ${CYAN}1.${NC} شغّل Tor:      ${WHITE}tor &${NC}"
-echo -e "  ${CYAN}2.${NC} شغّل Privoxy:  ${WHITE}privoxy &${NC}"
-echo -e "  ${CYAN}3.${NC} شغّل الأداة:   ${WHITE}./camoro.sh${NC}"
-echo -e ""
-echo -e "  ${YELLOW}💡 تغيير IP يدوي:${NC}"
-echo -e "  ${WHITE}pkill -HUP tor${NC}"
-echo -e ""
+echo ""
+echo -e "  ${YELLOW}📌 للتشغيل:${NC}"
+echo -e "  ${CYAN}  python camoro.py${NC}"
+echo -e "  ${CYAN}  أو: ./camoro.sh${NC}"
+echo ""
